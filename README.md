@@ -6,9 +6,10 @@ The original coursework compared a ReLU CNN, a deeper batch-normalized CNN,
 and a Tanh CNN. This repository retains their broad architectures and original
 optimizer/batch-size choices but fixes the evaluation protocol.
 
-**Status:** The code and notebook structure have been statically checked, but
-**the refactored experiments have not yet been trained or verified end-to-end**.
-Do not report numerical performance from this repository until a full run succeeds.
+## Verification status
+
+- **Smoke test passed on Windows (Python 3.12.10).** All three CNN configurations ran for one epoch on stratified subsets of 3,000 training and 500 validation images. The script selected a checkpoint by validation loss and wrote the smoke reports to `results/smoke/`.
+- **Full training and official test evaluation are pending.** The smoke test checks the training, selection, and reporting workflow. It skips evaluation on the official test set and provides no held-out performance estimate.
 
 ## Experimental design
 
