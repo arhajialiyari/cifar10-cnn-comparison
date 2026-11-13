@@ -6,6 +6,8 @@ import argparse
 import csv
 import gc
 import json
+import os
+import pickle
 from pathlib import Path
 
 import matplotlib
@@ -30,9 +32,74 @@ MODEL_CONFIGS = {
 }
 
 
+def _load_cifar_batch(path: Path):
+    """Load one CIFAR-10 batch from the local Python-format dataset."""
+    with path.open("rb") as file:
+        batch = pickle.load(file, encoding="bytes")
+
+    data = batch[b"data"]
+    labels = np.asarray(batch[b"labels"], dtype="int32")
+
+    if data.shape != (10000, 3072):
+        raise ValueError(f"Unexpected image shape in {path.name}: {data.shape}")
+
+    images = data.reshape(-1, 3, 32, 32).transpose(0, 2, 3, 1)
+
+    if len(images) != len(labels):
+        raise ValueError(f"Image/label mismatch in {path.name}")
+
+    return images, labels
+
+
 def prepare_data(seed: int, smoke: bool):
-    """Return stratified training/validation data and the untouched test set."""
-    (x_full, y_full), (x_test, y_test) = tf.keras.datasets.cifar10.load_data()
+    """Load local CIFAR-10 and return stratified train/validation data."""
+    keras_home = Path(
+        os.environ.get("KERAS_HOME", str(Path.home() / ".keras"))
+    )
+    dataset_dir = keras_home / "datasets" / "cifar-10-batches-py"
+
+    train_files = [
+        dataset_dir / f"data_batch_{index}"
+        for index in range(1, 6)
+    ]
+    test_file = dataset_dir / "test_batch"
+
+    required_files = train_files + [test_file]
+    missing = [str(path) for path in required_files if not path.is_file()]
+
+    if missing:
+        raise FileNotFoundError(
+            "Local CIFAR-10 files are missing:\n"
+            + "\n".join(missing)
+        )
+
+    # Preallocate arrays to avoid holding duplicate training batches in memory.
+    x_full = np.empty((50000, 32, 32, 3), dtype=np.uint8)
+    y_full = np.empty(50000, dtype=np.int32)
+
+    offset = 0
+
+    for batch_path in train_files:
+        batch_x, batch_y = _load_cifar_batch(batch_path)
+        end = offset + len(batch_y)
+
+        if end > 50000:
+            raise ValueError("Unexpected number of training samples.")
+
+        x_full[offset:end] = batch_x
+        y_full[offset:end] = batch_y
+        offset = end
+
+        del batch_x, batch_y
+
+    if offset != 50000:
+        raise ValueError(f"Expected 50000 training samples, got {offset}.")
+
+    x_test, y_test = _load_cifar_batch(test_file)
+
+    if x_test.shape != (10000, 32, 32, 3):
+        raise ValueError(f"Unexpected test shape: {x_test.shape}")
+
     y_full = y_full.ravel().astype("int32")
     y_test = y_test.ravel().astype("int32")
 
@@ -42,18 +109,31 @@ def prepare_data(seed: int, smoke: bool):
         random_state=seed,
         stratify=y_full,
     )
+
     if smoke:
         train_idx, _ = train_test_split(
-            train_idx, train_size=3000, random_state=seed, stratify=y_full[train_idx]
+            train_idx,
+            train_size=3000,
+            random_state=seed,
+            stratify=y_full[train_idx],
         )
+
         val_idx, _ = train_test_split(
-            val_idx, train_size=500, random_state=seed, stratify=y_full[val_idx]
+            val_idx,
+            train_size=500,
+            random_state=seed,
+            stratify=y_full[val_idx],
         )
 
     x_train = x_full[train_idx].astype("float32") / 255.0
     x_val = x_full[val_idx].astype("float32") / 255.0
     x_test = x_test.astype("float32") / 255.0
-    return (x_train, y_full[train_idx]), (x_val, y_full[val_idx]), (x_test, y_test)
+
+    return (
+        (x_train, y_full[train_idx]),
+        (x_val, y_full[val_idx]),
+        (x_test, y_test),
+    )
 
 
 def build_model(name: str) -> tf.keras.Model:

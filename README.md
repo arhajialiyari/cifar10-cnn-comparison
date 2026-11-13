@@ -13,7 +13,7 @@ Do not report numerical performance from this repository until a full run succee
 ## Experimental design
 
 - **Data:** CIFAR-10 (50,000 training images and 10,000 official test images; 10 classes).
-  Keras downloads the public dataset on first use; no dataset is committed.
+  The loader reads pre-existing local CIFAR-10 batch files without downloading. No dataset is committed.
 - **Split:** Stratified, seeded 45,000/5,000 training/validation partition from
   the official 50,000 training images; the official test set is kept untouched
   for model selection.
@@ -79,3 +79,15 @@ scores have been copied into the new experiment's results.
 Refactored from the author's deep learning course exercises. The linked original
 notebook is the source of the three architectures; the data-splitting,
 checkpointing, selection, reporting and reproducibility workflow are new.
+
+## Offline dataset requirement
+
+The experiment requires the extracted CIFAR-10 Python-format dataset
+inside the standard Keras dataset cache:
+
+`~/.keras/datasets/cifar-10-batches-py/`
+
+The directory must contain `data_batch_1` through `data_batch_5`
+and `test_batch`. `KERAS_HOME` can override the Keras cache location.
+
+The experiment does not download missing data automatically.
